@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
     "@livekit/components-react": "^2.6.0",
     "@livekit/components-styles": "^1.1.0",
     "livekit-client": "^2.5.0",
