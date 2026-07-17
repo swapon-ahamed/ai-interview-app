@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+web/.env.local
+agent/.env
+web/.next/
+web/node_modules/
