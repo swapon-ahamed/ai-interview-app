@@ -7,12 +7,13 @@ import {
   LiveKitRoom,
   ParticipantTile,
   RoomAudioRenderer,
+  useParticipants,
   useTracks,
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { AIInterviewerAvatar } from "@/components/AIInterviewerAvatar";
+import { Avatar3D } from "@/components/Avatar3D";
 
 export default function InterviewPage() {
   const { roomName } = useParams<{ roomName: string }>();
@@ -46,17 +47,30 @@ export default function InterviewPage() {
       data-lk-theme="default"
       style={{ height: "100vh", display: "flex", flexDirection: "column" }}
     >
-      {/* Plays the AI agent's TTS audio out loud — required even though we don't show its video */}
+      {/* Plays Maya's TTS audio out loud */}
       <RoomAudioRenderer />
 
       <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: 8 }}>
-        <AIInterviewerAvatar />
+        <AIInterviewerPanel />
         <CandidateSelfView />
       </div>
 
       <ControlBar />
     </LiveKitRoom>
   );
+}
+
+function AIInterviewerPanel() {
+  const participants = useParticipants();
+  const agent = participants.find((p) => !p.isLocal);
+
+  const micTracks = useTracks([Track.Source.Microphone]);
+  const agentTrackRef = micTracks.find((t) => !t.participant.isLocal);
+  const audioTrack = (agentTrackRef?.publication?.track as any)?.mediaStreamTrack as
+    | MediaStreamTrack
+    | undefined;
+
+  return <Avatar3D audioTrack={audioTrack} agentPresent={!!agent} />;
 }
 
 function CandidateSelfView() {
