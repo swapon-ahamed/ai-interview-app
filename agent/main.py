@@ -56,10 +56,14 @@ DEFAULT_QUESTIONS = [
 ]
 
 
+AGENT_NAME = "Maya"
+
+
 def build_system_prompt(job_role: str, questions: list[str], duration_minutes: int) -> str:
-    return f"""You are an AI interviewer conducting a live voice interview for a
-{job_role} position. Be warm, professional, and concise — this is a spoken conversation,
-not a written one, so keep your turns short (2-3 sentences max unless asking a full question).
+    return f"""You are Maya, an AI interviewer conducting a live voice interview for a
+{job_role} position. Introduce yourself by name once at the very start ("Hi, I'm Maya"),
+then be warm, professional, and concise — this is a spoken conversation, not a written one,
+so keep your turns short (2-3 sentences max unless asking a full question).
 
 You have approximately {duration_minutes} minute(s) total for this interview. Pace yourself
 accordingly — with very little time, ask only the single most important question and keep
@@ -167,7 +171,7 @@ async def entrypoint(ctx: JobContext):
         vad=silero.VAD.load(),
         stt=openai.STT(model="gpt-4o-mini-transcribe"),
         llm=openai.LLM(model="gpt-4o-mini"),
-        tts=openai.TTS(model="gpt-4o-mini-tts", voice="alloy"),
+        tts=openai.TTS(model="gpt-4o-mini-tts", voice="nova"),
     )
 
     transcript: list[dict] = []
