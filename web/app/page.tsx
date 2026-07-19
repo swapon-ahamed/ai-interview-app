@@ -10,6 +10,9 @@ export default function HomePage() {
   const [candidateName, setCandidateName] = useState("");
   const [jobRole, setJobRole] = useState("");
   const [questionsText, setQuestionsText] = useState("");
+  const [scheduledStart, setScheduledStart] = useState("");
+  const [scheduledEnd, setScheduledEnd] = useState("");
+  const [durationMinutes, setDurationMinutes] = useState(2);
   const [link, setLink] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -17,6 +20,18 @@ export default function HomePage() {
     fetch("/api/templates")
       .then((res) => res.json())
       .then((data) => setTemplates(data.templates ?? []));
+
+    // Default window: opens now, active for 3 hours
+    const toLocalInputValue = (d: Date) => {
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+        d.getHours()
+      )}:${pad(d.getMinutes())}`;
+    };
+    const now = new Date();
+    const threeHoursLater = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+    setScheduledStart(toLocalInputValue(now));
+    setScheduledEnd(toLocalInputValue(threeHoursLater));
   }, []);
 
   function applyTemplate(templateId: string) {
@@ -37,7 +52,14 @@ export default function HomePage() {
     const res = await fetch("/api/interviews", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ candidateName, jobRole, questions }),
+      body: JSON.stringify({
+        candidateName,
+        jobRole,
+        questions,
+        scheduledStart,
+        scheduledEnd,
+        durationMinutes,
+      }),
     });
     const data = await res.json();
     setLoading(false);
@@ -100,6 +122,38 @@ export default function HomePage() {
         placeholder={"Ask the candidate to introduce themselves.\nAsk about...\n..."}
         style={{ width: "100%", padding: 8, fontFamily: "monospace" }}
       />
+
+      <label style={{ display: "block", marginTop: 16 }}>Interview window opens</label>
+      <input
+        type="datetime-local"
+        value={scheduledStart}
+        onChange={(e) => setScheduledStart(e.target.value)}
+        style={{ width: "100%", padding: 8 }}
+      />
+
+      <label style={{ display: "block", marginTop: 16 }}>Interview window closes</label>
+      <input
+        type="datetime-local"
+        value={scheduledEnd}
+        onChange={(e) => setScheduledEnd(e.target.value)}
+        style={{ width: "100%", padding: 8 }}
+      />
+      <p style={{ fontSize: 12, color: "#888", marginTop: 4 }}>
+        The candidate's link only works between these two times. Defaults to opening now and
+        closing in 3 hours.
+      </p>
+
+      <label style={{ display: "block", marginTop: 16 }}>Session duration (minutes)</label>
+      <input
+        type="number"
+        min={1}
+        value={durationMinutes}
+        onChange={(e) => setDurationMinutes(Number(e.target.value))}
+        style={{ width: "100%", padding: 8 }}
+      />
+      <p style={{ fontSize: 12, color: "#888", marginTop: 4 }}>
+        The AI interviewer will wrap up and end the call automatically after this many minutes.
+      </p>
 
       <button
         onClick={createInterview}

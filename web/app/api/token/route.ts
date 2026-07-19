@@ -1,5 +1,6 @@
 import { AccessToken } from "livekit-server-sdk";
 import { NextRequest, NextResponse } from "next/server";
+import { getSupabaseAdmin } from "@/lib/supabase";
 
 // Mints a short-lived LiveKit token so the candidate's browser can join the
 // interview room. The AI agent (agent/main.py) auto-joins the same room name
@@ -11,6 +12,38 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: "candidateName and roomName are required" },
       { status: 400 }
+    );
+  }
+
+  // Check the interview's scheduled window
+  const supabase = getSupabaseAdmin();
+  const { data: interview, error } = await supabase
+    .from("interviews")
+    .select("scheduled_start, scheduled_end, status")
+    .eq("room_name", roomName)
+    .single();
+
+  if (error || !interview) {
+    return NextResponse.json({ error: "Interview not found." }, { status: 404 });
+  }
+
+  const now = new Date();
+
+  if (interview.scheduled_start && now < new Date(interview.scheduled_start)) {
+    return NextResponse.json(
+      {
+        error: `This interview hasn't started yet. It opens at ${new Date(
+          interview.scheduled_start
+        ).toLocaleString()}.`,
+      },
+      { status: 403 }
+    );
+  }
+
+  if (interview.scheduled_end && now > new Date(interview.scheduled_end)) {
+    return NextResponse.json(
+      { error: "This interview link has expired. Please contact the recruiter for a new link." },
+      { status: 410 }
     );
   }
 

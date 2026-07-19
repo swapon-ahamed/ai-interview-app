@@ -1,9 +1,18 @@
 "use client";
 
 import "@livekit/components-styles";
-import { LiveKitRoom, VideoConference } from "@livekit/components-react";
+import {
+  ControlBar,
+  GridLayout,
+  LiveKitRoom,
+  ParticipantTile,
+  RoomAudioRenderer,
+  useTracks,
+} from "@livekit/components-react";
+import { Track } from "livekit-client";
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
+import { AIInterviewerAvatar } from "@/components/AIInterviewerAvatar";
 
 export default function InterviewPage() {
   const { roomName } = useParams<{ roomName: string }>();
@@ -35,9 +44,36 @@ export default function InterviewPage() {
       token={token}
       serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
       data-lk-theme="default"
-      style={{ height: "100vh" }}
+      style={{ height: "100vh", display: "flex", flexDirection: "column" }}
     >
-      <VideoConference />
+      {/* Plays the AI agent's TTS audio out loud — required even though we don't show its video */}
+      <RoomAudioRenderer />
+
+      <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: 8 }}>
+        <AIInterviewerAvatar />
+        <CandidateSelfView />
+      </div>
+
+      <ControlBar />
     </LiveKitRoom>
+  );
+}
+
+function CandidateSelfView() {
+  const tracks = useTracks([Track.Source.Camera]);
+  const myTrack = tracks.find((t) => t.participant.isLocal);
+
+  if (!myTrack) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "#222", color: "#888" }}>
+        Waiting for camera…
+      </div>
+    );
+  }
+
+  return (
+    <GridLayout tracks={[myTrack]} style={{ height: "100%" }}>
+      <ParticipantTile />
+    </GridLayout>
   );
 }

@@ -16,9 +16,12 @@ version and adjust.
 Run with:  python main.py dev
 """
 
+import asyncio
 import json
 import logging
 import os
+
+from pathlib import Path
 
 from dotenv import load_dotenv
 from livekit.agents import (
@@ -32,7 +35,16 @@ from livekit.plugins import openai, silero
 from openai import OpenAI as OpenAIClient
 from supabase import create_client
 
-load_dotenv(dotenv_path="../.env")
+# Load .env from the project root, relative to this file's location — this works
+# no matter what directory you run `python main.py` from.
+ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(dotenv_path=ENV_PATH)
+
+if not os.environ.get("LIVEKIT_URL"):
+    raise RuntimeError(
+        f"LIVEKIT_URL not found. Checked for a .env file at: {ENV_PATH}\n"
+        f"Make sure that file exists and contains LIVEKIT_URL=wss://your-project.livekit.cloud"
+    )
 
 logger = logging.getLogger("interview-agent")
 
@@ -44,10 +56,14 @@ DEFAULT_QUESTIONS = [
 ]
 
 
-def build_system_prompt(job_role: str, questions: list[str]) -> str:
+def build_system_prompt(job_role: str, questions: list[str], duration_minutes: int) -> str:
     return f"""You are an AI interviewer conducting a live voice interview for a
 {job_role} position. Be warm, professional, and concise — this is a spoken conversation,
 not a written one, so keep your turns short (2-3 sentences max unless asking a full question).
+
+You have approximately {duration_minutes} minute(s) total for this interview. Pace yourself
+accordingly — with very little time, ask only the single most important question and keep
+everything brief; with more time, move through the plan at a natural conversational pace.
 
 Follow this interview plan in order, moving to the next item once the current one has been
 reasonably answered. Ask natural, brief follow-up questions when an answer is vague or
@@ -143,8 +159,9 @@ async def entrypoint(ctx: JobContext):
     job_role = metadata.get("jobRole", "General")
     questions = metadata.get("questions") or DEFAULT_QUESTIONS
     interview_id = metadata.get("interviewId")
+    duration_minutes = metadata.get("durationMinutes", 2)
 
-    system_prompt = build_system_prompt(job_role, questions)
+    system_prompt = build_system_prompt(job_role, questions, duration_minutes)
 
     session = AgentSession(
         vad=silero.VAD.load(),
@@ -196,6 +213,26 @@ async def entrypoint(ctx: JobContext):
     await session.generate_reply(
         instructions="Greet the candidate warmly and start the interview per the plan."
     )
+
+    # --- Enforce the hard session duration ---
+    async def enforce_duration():
+        await asyncio.sleep(duration_minutes * 60)
+        try:
+            await session.generate_reply(
+                instructions="Time is up. Immediately and politely wrap up the interview in "
+                "one short sentence, thank the candidate, and say goodbye — do not ask "
+                "anything else."
+            )
+            await asyncio.sleep(6)  # let the goodbye message finish playing
+        finally:
+            await ctx.room.disconnect()
+
+    duration_task = asyncio.create_task(enforce_duration())
+
+    async def cancel_duration_timer():
+        duration_task.cancel()
+
+    ctx.add_shutdown_callback(cancel_duration_timer)
 
 
 if __name__ == "__main__":

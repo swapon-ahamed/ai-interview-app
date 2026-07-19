@@ -20,7 +20,14 @@ export async function GET() {
 // Creates an interview record + a LiveKit room whose metadata tells the AI
 // agent what job role / questions to use for this specific interview.
 export async function POST(req: NextRequest) {
-  const { candidateName, jobRole, questions } = await req.json();
+  const {
+    candidateName,
+    jobRole,
+    questions,
+    scheduledStart,
+    scheduledEnd,
+    durationMinutes,
+  } = await req.json();
 
   if (!candidateName || !jobRole) {
     return NextResponse.json(
@@ -30,6 +37,18 @@ export async function POST(req: NextRequest) {
   }
 
   const roomName = `interview-${Date.now()}`;
+  const now = new Date();
+  const start = scheduledStart ? new Date(scheduledStart) : now;
+  const end = scheduledEnd ? new Date(scheduledEnd) : new Date(now.getTime() + 3 * 60 * 60 * 1000); // default: active for 3 hours
+  const duration = typeof durationMinutes === "number" && durationMinutes > 0 ? durationMinutes : 2; // default: 2 min session
+
+  if (end <= start) {
+    return NextResponse.json(
+      { error: "Interview window end must be after start." },
+      { status: 400 }
+    );
+  }
+
   const finalQuestions: string[] =
     Array.isArray(questions) && questions.length > 0
       ? questions
@@ -50,6 +69,9 @@ export async function POST(req: NextRequest) {
       job_role: jobRole,
       questions: finalQuestions,
       status: "created",
+      scheduled_start: start.toISOString(),
+      scheduled_end: end.toISOString(),
+      duration_minutes: duration,
     })
     .select()
     .single();
@@ -71,6 +93,7 @@ export async function POST(req: NextRequest) {
       interviewId: interview.id,
       jobRole,
       questions: finalQuestions,
+      durationMinutes: duration,
     }),
   });
 
