@@ -1,13 +1,18 @@
 import { RoomServiceClient } from "livekit-server-sdk";
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseAdmin } from "@/lib/supabase";
+import { getAuthenticatedUser, getSupabaseAdmin } from "@/lib/supabase";
 
-// GET /api/interviews — list all interviews (newest first) for the dashboard
-export async function GET() {
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
+// GET /api/interviews — list the signed-in company's own interviews (newest first)
+export async function GET(req: NextRequest) {
+  const user = await getAuthenticatedUser(req.headers.get("authorization"));
+  if (!user) {
+    return NextResponse.json({ error: "Invalid or missing session" }, { status: 401 });
+  }
+
+  const { data, error } = await getSupabaseAdmin()
     .from("interviews")
     .select("id, room_name, candidate_name, job_role, status, score, created_at, completed_at")
+    .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -20,6 +25,11 @@ export async function GET() {
 // Creates an interview record + a LiveKit room whose metadata tells the AI
 // agent what job role / questions to use for this specific interview.
 export async function POST(req: NextRequest) {
+  const user = await getAuthenticatedUser(req.headers.get("authorization"));
+  if (!user) {
+    return NextResponse.json({ error: "Invalid or missing session" }, { status: 401 });
+  }
+
   const {
     candidateName,
     jobRole,
@@ -72,6 +82,7 @@ export async function POST(req: NextRequest) {
       scheduled_start: start.toISOString(),
       scheduled_end: end.toISOString(),
       duration_minutes: duration,
+      user_id: user.id,
     })
     .select()
     .single();

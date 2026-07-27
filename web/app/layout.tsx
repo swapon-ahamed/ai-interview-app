@@ -1,3 +1,5 @@
+import NavBar from "@/components/NavBar";
+
 export const metadata = {
   title: "AI Interview",
 };
@@ -9,7 +11,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <NavBar />
+        {children}
+      </body>
     </html>
   );
 }

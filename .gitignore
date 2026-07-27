@@ -220,3 +220,6 @@ web/.env.local
 agent/.env
 web/.next/
 web/node_modules/
+admin/.env.local
+admin/.next/
+admin/node_modules/
