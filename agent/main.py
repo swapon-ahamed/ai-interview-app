@@ -56,12 +56,17 @@ DEFAULT_QUESTIONS = [
 ]
 
 
-AGENT_NAME = "Maya"
+AGENT_NAME = "Ayesha"
+
+# Topic for the live-progress data messages published to the room as the
+# interview moves through its question plan — read by the candidate's browser
+# (web/app/interview/[roomName]/page.tsx) to drive the progress bar.
+PROGRESS_TOPIC = "interview-progress"
 
 
 def build_system_prompt(job_role: str, questions: list[str], duration_minutes: int) -> str:
-    return f"""You are Maya, an AI interviewer conducting a live voice interview for a
-{job_role} position. Introduce yourself by name once at the very start ("Hi, I'm Maya"),
+    return f"""You are Ayesha, an AI interviewer conducting a live voice interview for a
+{job_role} position. Introduce yourself by name once at the very start ("Hi, I'm Ayesha"),
 then be warm, professional, and concise — this is a spoken conversation, not a written one,
 so keep your turns short (2-3 sentences max unless asking a full question).
 
@@ -100,6 +105,20 @@ transcript for a {job_role} position. Score the candidate on a 1-5 scale (5 = ex
 across these categories, based ONLY on what's in the transcript below. If the transcript
 is too short or empty to judge fairly, score conservatively (2-3) and say so in the summary.
 
+Category definitions:
+- communication: clarity of thought, listening/responsiveness, and how well they structure
+  an answer — not the same as english_proficiency below.
+- technical_depth, problem_solving, culture_fit: as the names suggest, judged on content.
+- english_proficiency: grammatical correctness, sentence structure, vocabulary range, and
+  fluency of their SPOKEN English specifically (this is a live voice interview transcribed
+  by speech-to-text, not a written test). Judge patterns that clearly come from the
+  candidate's own phrasing — repeated tense/agreement errors, fragmented or hard-to-follow
+  sentences, very limited vocabulary — rather than a single odd sentence. Do not penalize
+  the candidate for likely transcription glitches (missing punctuation, a mis-heard
+  homophone, one dropped word) or for informal spoken filler ("um", "like") — those are
+  normal in speech and not a language-proficiency issue. If the transcript is too short to
+  judge fluency fairly, score conservatively (2-3) and say so in language_feedback.
+
 Respond with ONLY valid JSON, no markdown formatting, matching exactly this shape:
 {{
   "overall_score": <1-5 integer>,
@@ -107,6 +126,8 @@ Respond with ONLY valid JSON, no markdown formatting, matching exactly this shap
   "technical_depth": <1-5 integer>,
   "problem_solving": <1-5 integer>,
   "culture_fit": <1-5 integer>,
+  "english_proficiency": <1-5 integer>,
+  "language_feedback": "<one concrete sentence about their grammar/fluency, not a generic restatement of the score>",
   "summary": "<2-3 sentence summary of the candidate's performance>",
   "recommendation": "<one of: Strong yes, Yes, Maybe, No>"
 }}
@@ -175,10 +196,31 @@ async def entrypoint(ctx: JobContext):
     )
 
     transcript: list[dict] = []
+    assistant_turns = 0
+
+    async def broadcast_progress(step_index: int) -> None:
+        payload = json.dumps({"step": step_index, "total": len(questions)})
+        try:
+            await ctx.room.local_participant.publish_data(
+                payload, reliable=True, topic=PROGRESS_TOPIC
+            )
+        except Exception as e:
+            # Best-effort UI nicety — never let a data-channel hiccup affect
+            # the actual interview.
+            logger.warning(f"Failed to publish progress update: {e}")
 
     @session.on("conversation_item_added")
     def _on_item(event):
+        nonlocal assistant_turns
         transcript.append({"role": event.item.role, "content": event.item.text_content})
+
+        if event.item.role == "assistant":
+            # Heuristic: each assistant turn roughly advances one plan step,
+            # starting with the greeting covering step 0. Not an exact model
+            # of the LLM's internal state, just a best-effort progress signal.
+            step_index = min(assistant_turns, len(questions) - 1)
+            assistant_turns += 1
+            asyncio.create_task(broadcast_progress(step_index))
 
     supabase = get_supabase()
 

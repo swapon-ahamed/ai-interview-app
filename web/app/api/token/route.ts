@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
   const supabase = getSupabaseAdmin();
   const { data: interview, error } = await supabase
     .from("interviews")
-    .select("scheduled_start, scheduled_end, status")
+    .select("scheduled_start, scheduled_end, status, mode, duration_minutes, questions")
     .eq("room_name", roomName)
     .single();
 
@@ -69,5 +69,14 @@ export async function POST(req: NextRequest) {
     canSubscribe: true,
   });
 
-  return NextResponse.json({ token: await token.toJwt() });
+  // Handed back alongside the token so the room UI (progress bar, countdown,
+  // post-call redirect) doesn't need its own authenticated Supabase read —
+  // none of this is sensitive, it's the same plan the agent already read
+  // off the room's metadata.
+  return NextResponse.json({
+    token: await token.toJwt(),
+    mode: interview.mode,
+    durationMinutes: interview.duration_minutes,
+    questions: interview.questions,
+  });
 }

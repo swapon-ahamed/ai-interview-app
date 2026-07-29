@@ -3,7 +3,7 @@
 import { useIsSpeaking, useParticipants } from "@livekit/components-react";
 import type { Participant } from "livekit-client";
 
-const AGENT_NAME = "Maya";
+const AGENT_NAME = "Ayesha";
 
 // Finds the AI agent's participant (the only remote, non-local participant in
 // the room — the agent joins as itself, the candidate is the local participant)

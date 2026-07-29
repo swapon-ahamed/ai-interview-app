@@ -9,6 +9,8 @@ type ScoreCard = {
   technical_depth: number;
   problem_solving: number;
   culture_fit: number;
+  english_proficiency: number;
+  language_feedback: string;
   summary: string;
   recommendation: string;
 };
@@ -60,8 +62,14 @@ export default function ReportPage() {
             <li>Technical depth: {score.technical_depth}/5</li>
             <li>Problem solving: {score.problem_solving}/5</li>
             <li>Culture fit: {score.culture_fit}/5</li>
+            <li>English proficiency: {score.english_proficiency}/5</li>
           </ul>
           <p>{score.summary}</p>
+          {score.language_feedback && (
+            <p style={{ color: "#666", fontSize: 14 }}>
+              <strong>Grammar &amp; fluency:</strong> {score.language_feedback}
+            </p>
+          )}
         </section>
       ) : (
         <p style={{ marginTop: 24, color: "#888" }}>

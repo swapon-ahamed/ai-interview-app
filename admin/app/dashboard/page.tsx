@@ -130,6 +130,18 @@ export default function DashboardPage() {
             View Interviews
           </Link>
           <Link
+            href="/dashboard/templates"
+            style={{
+              padding: "8px 16px",
+              border: "1px solid #000",
+              color: "#000",
+              textDecoration: "none",
+              borderRadius: 4,
+            }}
+          >
+            Manage Templates
+          </Link>
+          <Link
             href="/dashboard/register"
             style={{
               padding: "8px 16px",

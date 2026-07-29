@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import Logo from "@/components/Logo";
 
 const linkStyle = (active: boolean): React.CSSProperties => ({
   color: active ? "#000" : "#555",
@@ -43,8 +44,8 @@ export default function NavBar() {
         fontFamily: "sans-serif",
       }}
     >
-      <Link href="/" style={{ fontWeight: 700, textDecoration: "none", color: "#000" }}>
-        AI Interview Admin
+      <Link href="/" style={{ textDecoration: "none" }}>
+        <Logo />
       </Link>
 
       <div style={{ display: "flex", gap: 20, alignItems: "center" }}>
@@ -58,6 +59,12 @@ export default function NavBar() {
               style={linkStyle(pathname === "/dashboard/interviews")}
             >
               Interviews
+            </Link>
+            <Link
+              href="/dashboard/templates"
+              style={linkStyle(pathname.startsWith("/dashboard/templates"))}
+            >
+              Templates
             </Link>
             <button
               onClick={handleSignOut}

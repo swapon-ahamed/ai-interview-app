@@ -1,12 +1,22 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
-export async function GET() {
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
+// Public: powers both the company create-interview template picker and the
+// /practice catalog. Optional ?q= does a simple role-name search for the
+// practice catalog's search box.
+export async function GET(req: NextRequest) {
+  const q = req.nextUrl.searchParams.get("q")?.trim();
+
+  let query = getSupabaseAdmin()
     .from("question_templates")
-    .select("id, role, questions")
+    .select("id, role, slug, skills, duration_minutes, questions")
     .order("role");
+
+  if (q) {
+    query = query.ilike("role", `%${q}%`);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
