@@ -1,0 +1,17 @@
+[Unit]
+Description=AI Interview LiveKit Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/ai-interview-app/agent
+ExecStart=/home/ubuntu/ai-interview-app/agent/venv/bin/python main.py start
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/ubuntu/ai-interview-app/agent/agent.log
+StandardError=append:/home/ubuntu/ai-interview-app/agent/agent.log
+
+[Install]
+WantedBy=multi-user.target
