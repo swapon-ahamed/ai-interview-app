@@ -121,6 +121,17 @@ drop policy if exists "companies_select_own" on companies;
 create policy "companies_select_own" on companies
   for select using (auth.uid() = user_id);
 
+-- Lock down every other public table. All access to these goes through
+-- server-side code using the service_role key (web/ and admin/ API routes,
+-- agent/main.py), which bypasses RLS — so enabling RLS with NO policies
+-- denies the anon/authenticated keys entirely without affecting the apps.
+-- Without this, anyone holding the public anon key (shipped to every browser)
+-- could read/edit/delete these tables directly via the Supabase REST API.
+-- If a client component ever needs direct access, add a narrow policy here.
+alter table interviews enable row level security;
+alter table question_templates enable row level security;
+alter table demo_requests enable row level security;
+
 -- Backfill skills for the three original seed roles if they were inserted
 -- before the `skills` column existed and haven't been edited since (guards
 -- against clobbering admin edits on a re-run).
