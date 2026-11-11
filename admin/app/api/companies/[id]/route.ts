@@ -1,19 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAuthenticatedUser, getSupabaseAdmin } from "@/lib/supabase";
+import { getSupabaseAdmin } from "@/lib/supabase";
+import { requireAdmin } from "@/lib/auth";
 
 // Single-company fetch + edit, used by the admin dashboard's company detail
 // page. Same access model as GET /api/companies: any signed-in admin, gated
 // only on a valid session token (shared directory, no per-row ownership).
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
-  const user = await getAuthenticatedUser(req.headers.get("authorization"));
-  if (!user) {
-    return NextResponse.json({ error: "Invalid or missing session" }, { status: 401 });
-  }
+  const auth = await requireAdmin(req.headers.get("authorization"));
+  if ("response" in auth) return auth.response;
 
-  const { data, error } = await getSupabaseAdmin()
+  const supabaseAdmin = getSupabaseAdmin();
+  const { data, error } = await supabaseAdmin
     .from("companies")
-    .select("id, company_name, email, mobile_number, contact_address, status, created_at")
+    .select("id, user_id, company_name, email, mobile_number, contact_address, status, signup_source, created_at")
     .eq("id", params.id)
     .maybeSingle();
 
@@ -24,16 +24,18 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     return NextResponse.json({ error: "Company not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ company: data });
+  const { user_id, ...company } = data;
+  const { data: owner } = await supabaseAdmin.auth.admin.getUserById(user_id);
+  return NextResponse.json({
+    company: { ...company, email_verified: Boolean(owner?.user?.email_confirmed_at) },
+  });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const user = await getAuthenticatedUser(req.headers.get("authorization"));
-  if (!user) {
-    return NextResponse.json({ error: "Invalid or missing session" }, { status: 401 });
-  }
+  const auth = await requireAdmin(req.headers.get("authorization"));
+  if ("response" in auth) return auth.response;
 
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
   const companyName = typeof body.companyName === "string" ? body.companyName.trim() : "";
   const mobileNumber = typeof body.mobileNumber === "string" ? body.mobileNumber.trim() : "";
   const contactAddress =

@@ -1,13 +1,15 @@
-import { RoomServiceClient } from "livekit-server-sdk";
+import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { getAuthenticatedUser, getSupabaseAdmin } from "@/lib/supabase";
+import { getSupabaseAdmin } from "@/lib/supabase";
+import { requireActiveCompany } from "@/lib/companyAuth";
+import { createInterviewRoom } from "@/lib/livekit";
 
 // GET /api/interviews — list the signed-in company's own interviews (newest first)
 export async function GET(req: NextRequest) {
-  const user = await getAuthenticatedUser(req.headers.get("authorization"));
-  if (!user) {
-    return NextResponse.json({ error: "Invalid or missing session" }, { status: 401 });
-  }
+  // Server-side company gate: verified email + admin-approved company.
+  const auth = await requireActiveCompany(req.headers.get("authorization"));
+  if ("response" in auth) return auth.response;
+  const user = auth.user;
 
   const { data, error } = await getSupabaseAdmin()
     .from("interviews")
@@ -25,10 +27,10 @@ export async function GET(req: NextRequest) {
 // Creates an interview record + a LiveKit room whose metadata tells the AI
 // agent what job role / questions to use for this specific interview.
 export async function POST(req: NextRequest) {
-  const user = await getAuthenticatedUser(req.headers.get("authorization"));
-  if (!user) {
-    return NextResponse.json({ error: "Invalid or missing session" }, { status: 401 });
-  }
+  // Server-side company gate: verified email + admin-approved company.
+  const auth = await requireActiveCompany(req.headers.get("authorization"));
+  if ("response" in auth) return auth.response;
+  const user = auth.user;
 
   const {
     candidateName,
@@ -46,7 +48,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const roomName = `interview-${Date.now()}`;
+  // Unguessable: the room name is the candidate's join link and the key for
+  // /report/[roomName], so it must not be enumerable like a timestamp.
+  const roomName = `interview-${randomUUID()}`;
   const now = new Date();
   const start = scheduledStart ? new Date(scheduledStart) : now;
   const end = scheduledEnd ? new Date(scheduledEnd) : new Date(now.getTime() + 3 * 60 * 60 * 1000); // default: active for 3 hours
@@ -91,21 +95,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // 2. Create the LiveKit room with metadata the agent will read on join
-  const roomService = new RoomServiceClient(
-    process.env.LIVEKIT_URL!.replace("wss://", "https://"),
-    process.env.LIVEKIT_API_KEY!,
-    process.env.LIVEKIT_API_SECRET!
-  );
-
-  await roomService.createRoom({
-    name: roomName,
-    metadata: JSON.stringify({
-      interviewId: interview.id,
-      jobRole,
-      questions: finalQuestions,
-      durationMinutes: duration,
-    }),
+  // 2. Create the LiveKit room (metadata tells the agent what to ask) and
+  //    dispatch this environment's agent into it.
+  await createInterviewRoom(roomName, {
+    interviewId: interview.id,
+    jobRole,
+    questions: finalQuestions,
+    durationMinutes: duration,
   });
 
   return NextResponse.json({ roomName, interviewId: interview.id });

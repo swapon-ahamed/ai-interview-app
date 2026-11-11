@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAuthenticatedUser, getSupabaseAdmin } from "@/lib/supabase";
+import { getSupabaseAdmin } from "@/lib/supabase";
+import { requireAdmin } from "@/lib/auth";
 
 function slugify(role: string): string {
   return role
@@ -12,10 +13,9 @@ function slugify(role: string): string {
 // model as /api/companies (any signed-in admin, shared directory, no
 // per-row ownership).
 export async function GET(req: NextRequest) {
-  const user = await getAuthenticatedUser(req.headers.get("authorization"));
-  if (!user) {
-    return NextResponse.json({ error: "Invalid or missing session" }, { status: 401 });
-  }
+  const auth = await requireAdmin(req.headers.get("authorization"));
+  if ("response" in auth) return auth.response;
+  const user = auth.user;
 
   const { data, error } = await getSupabaseAdmin()
     .from("question_templates")
@@ -31,10 +31,9 @@ export async function GET(req: NextRequest) {
 // Creates a new role in the catalog that both the company create-interview
 // picker and the public /practice page read from.
 export async function POST(req: NextRequest) {
-  const user = await getAuthenticatedUser(req.headers.get("authorization"));
-  if (!user) {
-    return NextResponse.json({ error: "Invalid or missing session" }, { status: 401 });
-  }
+  const auth = await requireAdmin(req.headers.get("authorization"));
+  if ("response" in auth) return auth.response;
+  const user = auth.user;
 
   const body = await req.json();
   const role = typeof body.role === "string" ? body.role.trim() : "";

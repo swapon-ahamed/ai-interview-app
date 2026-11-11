@@ -73,7 +73,7 @@ cd agent
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-cp ../.env.example ../.env   # fill in real values in .env
+cp ../.env.example ../.env.development   # fill in DEV values (see ENVIRONMENTS.md)
 python main.py dev
 ```
 
@@ -81,8 +81,13 @@ python main.py dev
 ```bash
 cd web
 npm install
+cp .env.example .env.development.local   # fill in DEV values (see ENVIRONMENTS.md)
 npm run dev
 ```
+
+> Two environments (development / production) — see **`ENVIRONMENTS.md`**.
+> Production: https://ai-interview.swapon-ahamed.me (web) and
+> https://ai-interview-admin.swapon-ahamed.me (admin).
 
 ### 3. Admin (Next.js, separate app — see `admin/README.md`)
 ```bash

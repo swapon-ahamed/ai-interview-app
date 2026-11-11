@@ -29,8 +29,9 @@ export function getSupabaseAdmin() {
 }
 
 // Verifies a "Bearer <token>" Authorization header against Supabase Auth and
-// returns the user it belongs to, or null. Used by API routes that any
-// signed-in admin may call (company listing/detail/edit).
+// returns the user it belongs to, or null. On its own this only proves the
+// caller has *some* account in the project (companies included) — admin API
+// routes must use requireAdmin() from lib/auth.ts instead.
 export async function getAuthenticatedUser(authHeader: string | null) {
   const token = (authHeader ?? "").replace(/^Bearer\s+/i, "");
   if (!token) return null;

@@ -37,9 +37,11 @@ export default function DashboardPage() {
         .eq("user_id", session.user.id)
         .maybeSingle();
 
-      if (company && company.status !== "active") {
+      // No companies row = not a company account (e.g. an admin), which
+      // used to be let through here. The API enforces the same rule.
+      if (!company || company.status !== "active") {
         await supabase.auth.signOut();
-        router.replace("/signin?pending=1");
+        router.replace(company ? "/signin?pending=1" : "/signin?notcompany=1");
         return;
       }
 

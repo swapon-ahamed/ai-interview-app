@@ -18,11 +18,11 @@ candidate browser  <-->  LiveKit Cloud room  <-->  Python AI Agent (STT -> LLM -
 
 Three independently-run apps, no shared package/monorepo tooling between them:
 
-- **`web/`** (Next.js, port 3000) — public site + company sign-in. Signed-in companies create
-  interviews and view reports from `/dashboard`. Candidates join via `/interview/[roomName]` with
-  no login.
-- **`admin/`** (Next.js, port 3001) — internal admin login; admins register company accounts and
-  activate/deactivate them from a shared companies directory. See `admin/README.md` for the full
+- **`web/`** (Next.js, port 3000) — public site + company sign-up/sign-in. Signed-in companies
+  create interviews and view reports from `/dashboard`. Candidates join via `/interview/[roomName]`
+  with no login; anyone can take a free practice interview at `/practice`.
+- **`admin/`** (Next.js, port 3001) — invite-only admin login; admins approve/invite companies,
+  invite other admins, and manage templates from a shared companies directory. See `admin/README.md` for the full
   admin-side flow (account types, moderation, company registration lifecycle) — it's kept
   up to date there rather than duplicated here.
 - **`agent/`** (Python, LiveKit Agents framework) — joins the interview room as an invisible
@@ -48,20 +48,36 @@ python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 python main.py dev     # dev mode: connects to LiveKit and waits for a room to join
 ```
-The agent loads `.env` from the **repo root**, not `agent/.env`, resolved relative to
-`agent/main.py`'s own location — so it works regardless of cwd. There's no test suite here either.
+The agent loads `.env.<APP_ENV>` (`.env.development` by default, `.env.production` on the
+server) from the **repo root**, not `agent/`, resolved relative to `agent/main.py`'s own location —
+so it works regardless of cwd. There's no test suite here either.
 
 ### Database
 Schema lives in `supabase/schema.sql`, applied by pasting into the Supabase dashboard's SQL
 Editor (no migration tool). It's idempotent (`create table if not exists`, `add column if not
 exists`), so re-running it after pulling schema changes is safe and expected — do this whenever
-`schema.sql` changes.
+`schema.sql` changes, in the **dev** Supabase project first, then production.
 
-## Environment variables
+## Environments and environment variables
 
-One root `.env` is shared by `agent/` and (implicitly) documents the values `web/.env.local` and
-`admin/.env.local` also need — see `.env.example`, `web/.env.example`, `admin/.env.example` for the
-exact per-app split. Key points that aren't obvious from the variable names alone:
+There are two environments — **development** (localhost, dev Supabase project) and **production**
+(https://ai-interview.swapon-ahamed.me + https://ai-interview-admin.swapon-ahamed.me on AWS Amplify,
+agent on Lightsail, the
+original Supabase project). `ENVIRONMENTS.md` is the full runbook. Key rules:
+
+- Non-secret per-environment settings are **committed** in `web/.env.{development,production}` and
+  `admin/.env.{development,production}` (URLs, `NEXT_PUBLIC_APP_ENV`, `LIVEKIT_AGENT_NAME`).
+  Secrets go in gitignored `*.env.development.local` / `*.env.production.local` (templates:
+  `web/.env.example`, `admin/.env.example`), in Amplify env vars, and for the agent in the
+  gitignored root `.env.development` / `.env.production` (template: `.env.example`).
+- Both environments share one LiveKit project. They're isolated by **named agent dispatch**: the
+  agent registers as `LIVEKIT_AGENT_NAME` (`ai-interviewer-dev` / `ai-interviewer-prod`,
+  `agent/main.py` → `WORKER_NAME`) and every room is created through `web/lib/livekit.ts`
+  `createInterviewRoom()`, which dispatches that name. Never create rooms with `RoomServiceClient`
+  directly — a room without a dispatch gets no agent.
+- `robots.txt` only allows indexing when `NEXT_PUBLIC_APP_ENV=production`.
+
+Other points that aren't obvious from the variable names alone:
 
 - `SUPABASE_SERVICE_ROLE_KEY` (no `NEXT_PUBLIC_` prefix) is used server-side by `agent/` and by
   both apps' API routes for full-access writes/reads that bypass RLS — never expose it to the
@@ -74,21 +90,24 @@ exact per-app split. Key points that aren't obvious from the variable names alon
 
 ## Architecture notes worth knowing before changing code
 
-**Auth model — no roles table.** There is no `role` column or permission distinction between
-"admin" and "company" Supabase Auth users anywhere in this project. Whoever can sign in at
-`admin/signin` is treated as a full admin; whoever can sign in at `web/signin` is treated as a
-company, gated only by their `companies.status` row (see below). Anyone with any Supabase Auth
-account in the shared project could sign into either app — see `admin/README.md`'s "Known
-limitation" note before building anything that assumes real role separation.
+**Auth model — two account types in one Supabase project.** An *admin* is a Supabase Auth user
+with a row in the `admins` table; a *company* is one with a row in `companies`. Every `admin/` API
+route calls `requireAdmin()` (`admin/lib/auth.ts`), and every company API route in `web/` calls
+`requireActiveCompany()` (`web/lib/companyAuth.ts`) — being signed in is never enough on its own.
+The client-side checks (admin `NavBar` → `/api/me`, `web/app/signin`, `web/app/dashboard`) only
+exist to show a clear message; the server checks are the real gate. Admins are **invite-only**
+(`admin/app/dashboard/admins` → `POST /api/admins`); `admin/signup` is just an explanatory page.
 
-**Company moderation gate.** New companies are created via `admin/`'s
-`POST /api/register-company` (service-role, admin-only) with `companies.status = 'pending'`, and
-confirmed immediately (`email_confirm: true`) so **no verification email is ever sent** — the only
-gate is admin moderation. `web/app/signin/page.tsx` checks `companies.status` client-side right
-after password auth succeeds and immediately signs the user back out if not `'active'`;
-`web/app/dashboard` re-checks on every load so a revert to `'pending'` takes effect on next page
-load, not just next login. If you touch sign-in/dashboard access control, both checks need to move
-together — there's no server-side enforcement of this gate elsewhere.
+**Company sign-up, email verification and moderation.** Companies get accounts two ways, both
+ending in `companies.status = 'pending'`:
+- self sign-up at `web/signup` → `POST /api/company-signup`, which calls the *anon* client's
+  `auth.signUp()` so Supabase emails a verification link (lands on `web/auth/confirmed`);
+- admin invite from `admin/dashboard/register` → `inviteUserByEmail()`; the link verifies the email
+  and lands on `web/auth/set-password`, where the company picks its own password.
+An admin can only activate a company whose email is verified (`/api/companies/[id]/status` returns
+409 otherwise). `requireActiveCompany()` requires a verified email **and** status `'active'`.
+Email delivery depends on Supabase Auth's SMTP settings and redirect-URL allow-list — see
+`admin/README.md`.
 
 **Room metadata is the handoff between `web/` and `agent/`.** `web/app/api/interviews/route.ts`
 (POST) creates both the Supabase `interviews` row and the LiveKit room in the same request, and

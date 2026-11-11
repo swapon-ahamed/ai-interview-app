@@ -112,6 +112,11 @@ alter table companies add column if not exists status text not null default 'pen
 
 create index if not exists idx_companies_user_id on companies (user_id);
 
+-- How the account was created: 'self_signup' (public web/signup, email
+-- verified by the company itself) or 'admin_invite' (admin/dashboard/register,
+-- email verified by accepting the invite). Older rows default to the latter.
+alter table companies add column if not exists signup_source text not null default 'admin_invite';
+
 alter table companies enable row level security;
 
 -- Only the company's own signed-in user may read their row. All writes go
@@ -120,6 +125,27 @@ alter table companies enable row level security;
 drop policy if exists "companies_select_own" on companies;
 create policy "companies_select_own" on companies
   for select using (auth.uid() = user_id);
+
+-- ---------------------------------------------------------------------------
+-- Account types: admins (invite-only) vs companies
+-- ---------------------------------------------------------------------------
+-- An admin is exactly a Supabase Auth user with a row here. Every admin/ API
+-- route checks this table server-side (admin/lib/supabase.ts requireAdmin),
+-- and admin/ signs out anyone who isn't listed. Rows are only created by
+-- an existing admin's invite (admin/app/api/admins) — there is no public
+-- admin signup. Server-only (RLS on, no policies).
+create table if not exists admins (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  email text not null,
+  invited_by uuid references auth.users (id) on delete set null,
+  created_at timestamptz not null default now()
+);
+alter table admins enable row level security;
+
+-- Bootstrapping the FIRST admin (one-time, after creating that user in
+-- Supabase Dashboard -> Authentication -> Users -> "Add user"):
+--   insert into admins (user_id, email)
+--   select id, email from auth.users where email = 'you@example.com';
 
 -- Lock down every other public table. All access to these goes through
 -- server-side code using the service_role key (web/ and admin/ API routes,
@@ -131,6 +157,150 @@ create policy "companies_select_own" on companies
 alter table interviews enable row level security;
 alter table question_templates enable row level security;
 alter table demo_requests enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- Free practice: candidate details + attempt cap
+-- ---------------------------------------------------------------------------
+-- One row per email that has started a free practice session (web/app/api/
+-- practice POST). attempts_used is the authoritative counter for the
+-- per-candidate cap — it's only ever changed through claim_practice_attempt()
+-- / release_practice_attempt() below so concurrent requests can't race past it.
+create table if not exists practice_candidates (
+  id uuid primary key default gen_random_uuid(),
+  full_name text not null,
+  email text not null unique, -- stored lowercased/trimmed by the API
+  phone text not null,        -- stored normalized: digits with optional leading +
+  attempts_used int not null default 0,
+  created_at timestamptz not null default now(),
+  last_attempt_at timestamptz
+);
+
+create index if not exists idx_practice_candidates_phone on practice_candidates (phone);
+alter table practice_candidates enable row level security; -- service_role only
+
+-- Links a practice interview to the candidate who took it, and which of their
+-- attempts it was (1..max). Null for company interviews.
+alter table interviews add column if not exists practice_candidate_id uuid
+  references practice_candidates (id) on delete set null;
+alter table interviews add column if not exists attempt_number int;
+create index if not exists idx_interviews_practice_candidate_id on interviews (practice_candidate_id);
+
+-- Atomically upserts the candidate and consumes one attempt if they have any
+-- left. The cap applies per email AND per phone (summed across every email
+-- that used that phone), so swapping email alone doesn't reset it.
+-- Returns {"ok": true, "candidate_id", "attempt_number", "remaining"} or
+-- {"ok": false, "candidate_id", "remaining": 0}.
+create or replace function claim_practice_attempt(
+  p_email text, p_full_name text, p_phone text, p_max int
+) returns jsonb
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_id uuid;
+  v_used int;
+  v_phone_used int;
+begin
+  -- Serialize claims for the same phone number so two different emails
+  -- sharing one phone can't both slip under the cap concurrently.
+  perform pg_advisory_xact_lock(hashtext('practice_phone:' || p_phone));
+
+  insert into practice_candidates (full_name, email, phone)
+  values (p_full_name, p_email, p_phone)
+  on conflict (email) do update
+    set full_name = excluded.full_name, phone = excluded.phone
+  returning id into v_id;
+
+  select coalesce(sum(attempts_used), 0) into v_phone_used
+  from practice_candidates
+  where phone = p_phone and id <> v_id;
+
+  update practice_candidates
+  set attempts_used = attempts_used + 1, last_attempt_at = now()
+  where id = v_id
+    and attempts_used < p_max
+    and attempts_used + v_phone_used < p_max
+  returning attempts_used into v_used;
+
+  if v_used is null then
+    return jsonb_build_object('ok', false, 'candidate_id', v_id, 'remaining', 0);
+  end if;
+
+  return jsonb_build_object(
+    'ok', true,
+    'candidate_id', v_id,
+    'attempt_number', v_used,
+    'remaining', greatest(p_max - v_used - v_phone_used, 0)
+  );
+end;
+$$;
+
+-- Gives an attempt back when the session couldn't actually be started
+-- (e.g. LiveKit room creation failed after the attempt was claimed).
+create or replace function release_practice_attempt(p_candidate_id uuid)
+returns void
+language sql
+set search_path = public
+as $$
+  update practice_candidates
+  set attempts_used = greatest(attempts_used - 1, 0)
+  where id = p_candidate_id;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- Rate limiting (shared across all web/ server instances)
+-- ---------------------------------------------------------------------------
+-- Fixed-window counters keyed by e.g. "practice:ip:1.2.3.4" or
+-- "practice:global". Used by web/lib/rateLimit.ts for the expensive
+-- endpoints (each practice session costs LiveKit + OpenAI usage), on top of
+-- the cheaper per-instance in-memory limiter in web/middleware.ts.
+create table if not exists rate_limits (
+  key text primary key,
+  window_start timestamptz not null default now(),
+  count int not null default 0
+);
+alter table rate_limits enable row level security; -- service_role only
+
+-- Records one hit against p_key and returns the count within the current
+-- window plus when that window resets. Caller decides allow/deny.
+create or replace function hit_rate_limit(p_key text, p_window_seconds int)
+returns jsonb
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_count int;
+  v_start timestamptz;
+begin
+  insert into rate_limits as r (key, window_start, count)
+  values (p_key, now(), 1)
+  on conflict (key) do update set
+    count = case when r.window_start <= now() - make_interval(secs => p_window_seconds)
+                 then 1 else r.count + 1 end,
+    window_start = case when r.window_start <= now() - make_interval(secs => p_window_seconds)
+                        then now() else r.window_start end
+  returning count, window_start into v_count, v_start;
+
+  -- Opportunistic cleanup so per-IP keys don't accumulate forever.
+  if random() < 0.01 then
+    delete from rate_limits where window_start < now() - interval '2 days';
+  end if;
+
+  return jsonb_build_object(
+    'count', v_count,
+    'reset_at', v_start + make_interval(secs => p_window_seconds)
+  );
+end;
+$$;
+
+-- Functions in `public` are callable through Supabase's REST API (/rpc) by
+-- default. Only the server (service_role) may call these.
+revoke execute on function claim_practice_attempt(text, text, text, int) from public, anon, authenticated;
+revoke execute on function release_practice_attempt(uuid) from public, anon, authenticated;
+revoke execute on function hit_rate_limit(text, int) from public, anon, authenticated;
+grant execute on function claim_practice_attempt(text, text, text, int) to service_role;
+grant execute on function release_practice_attempt(uuid) to service_role;
+grant execute on function hit_rate_limit(text, int) to service_role;
 
 -- Backfill skills for the three original seed roles if they were inserted
 -- before the `skills` column existed and haven't been edited since (guards

@@ -35,9 +35,20 @@ from livekit.plugins import openai, silero
 from openai import OpenAI as OpenAIClient
 from supabase import create_client
 
-# Load .env from the project root, relative to this file's location — this works
-# no matter what directory you run `python main.py` from.
-ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
+# Environment selection: APP_ENV=development (default) or production.
+# Secrets are loaded from the project root, relative to this file's location
+# (works no matter what directory you run `python main.py` from):
+#   .env.development  — local dev (dev Supabase project)
+#   .env.production   — the Lightsail server (prod Supabase project)
+# A plain `.env` is still read as a fallback for older setups.
+APP_ENV = os.environ.get("APP_ENV", "development").strip().lower()
+if APP_ENV not in ("development", "production"):
+    raise RuntimeError(f"APP_ENV must be 'development' or 'production', got {APP_ENV!r}")
+
+ROOT = Path(__file__).resolve().parent.parent
+ENV_PATH = ROOT / f".env.{APP_ENV}"
+if not ENV_PATH.exists():
+    ENV_PATH = ROOT / ".env"
 load_dotenv(dotenv_path=ENV_PATH)
 
 if not os.environ.get("LIVEKIT_URL"):
@@ -45,6 +56,15 @@ if not os.environ.get("LIVEKIT_URL"):
         f"LIVEKIT_URL not found. Checked for a .env file at: {ENV_PATH}\n"
         f"Make sure that file exists and contains LIVEKIT_URL=wss://your-project.livekit.cloud"
     )
+
+# Dev and prod share one LiveKit project, so the agent registers under an
+# environment-specific name and only joins rooms that explicitly dispatch
+# that name (web/lib/livekit.ts; same LIVEKIT_AGENT_NAME variable). Without a name it would
+# use automatic dispatch and race the other environment's agent for rooms.
+# (Not to be confused with AGENT_NAME below, the interviewer persona's name.)
+WORKER_NAME = os.environ.get("LIVEKIT_AGENT_NAME") or (
+    "ai-interviewer-prod" if APP_ENV == "production" else "ai-interviewer-dev"
+)
 
 logger = logging.getLogger("interview-agent")
 
@@ -282,4 +302,7 @@ async def entrypoint(ctx: JobContext):
 
 
 if __name__ == "__main__":
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
+    logging.getLogger("interview-agent").info(
+        f"Starting worker '{WORKER_NAME}' (APP_ENV={APP_ENV}, env file: {ENV_PATH.name})"
+    )
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, agent_name=WORKER_NAME))
