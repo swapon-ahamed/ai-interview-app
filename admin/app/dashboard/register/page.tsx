@@ -10,8 +10,6 @@ export default function RegisterCompanyPage() {
   const [checked, setChecked] = useState(false);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [mobileNumber, setMobileNumber] = useState("");
   const [contactAddress, setContactAddress] = useState("");
@@ -34,10 +32,6 @@ export default function RegisterCompanyPage() {
     e.preventDefault();
     setError(null);
 
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
     if (!companyName.trim()) {
       setError("Company name is required.");
       return;
@@ -56,7 +50,6 @@ export default function RegisterCompanyPage() {
       },
       body: JSON.stringify({
         email,
-        password,
         companyName,
         mobileNumber,
         contactAddress,
@@ -82,8 +75,9 @@ export default function RegisterCompanyPage() {
       {done ? (
         <p style={{ marginTop: 16 }}>
           <strong>{companyName}</strong> has been registered with status{" "}
-          <strong>Pending</strong>. They can sign in as soon as you activate them from{" "}
-          <Link href="/dashboard">the dashboard</Link>.
+          <strong>Pending</strong>, and an invite was emailed to <strong>{email}</strong>. They
+          verify their email and choose their own password from that link. You can activate
+          them from <Link href="/dashboard">the dashboard</Link> once they&apos;ve accepted.
         </p>
       ) : (
         <form onSubmit={handleRegister}>
@@ -124,31 +118,16 @@ export default function RegisterCompanyPage() {
             style={{ width: "100%", padding: 8 }}
           />
 
-          <label style={{ display: "block", marginTop: 16 }}>Password *</label>
-          <input
-            type="password"
-            required
-            minLength={6}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={{ width: "100%", padding: 8 }}
-          />
-
-          <label style={{ display: "block", marginTop: 16 }}>Confirm password *</label>
-          <input
-            type="password"
-            required
-            minLength={6}
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            style={{ width: "100%", padding: 8 }}
-          />
+          <p style={{ fontSize: 13, color: "#666", marginTop: 12, lineHeight: 1.5 }}>
+            We&apos;ll email an invite link to this address. The company verifies its email and
+            sets its own password from that link — you don&apos;t choose it for them.
+          </p>
 
           {error && <p style={{ color: "crimson", marginTop: 12 }}>{error}</p>}
 
           <div style={{ display: "flex", gap: 12, marginTop: 20 }}>
             <button type="submit" disabled={loading} style={{ padding: "8px 16px" }}>
-              {loading ? "Registering…" : "Register Company"}
+              {loading ? "Sending invite…" : "Register & send invite"}
             </button>
             <Link href="/dashboard" style={{ alignSelf: "center" }}>
               Cancel

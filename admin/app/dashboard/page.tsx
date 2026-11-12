@@ -13,8 +13,23 @@ type Company = {
   mobile_number: string;
   contact_address: string | null;
   status: "pending" | "active";
+  signup_source?: "self_signup" | "admin_invite";
+  email_verified?: boolean;
   created_at: string;
 };
+
+function badgeStyle(background: string, color: string): React.CSSProperties {
+  return {
+    display: "inline-block",
+    marginTop: 8,
+    padding: "2px 8px",
+    borderRadius: 12,
+    fontSize: 12,
+    fontWeight: 600,
+    background,
+    color,
+  };
+}
 
 function StatusBadge({ status }: { status: Company["status"] }) {
   const active = status === "active";
@@ -44,6 +59,7 @@ export default function DashboardPage() {
   const [loadingCompanies, setLoadingCompanies] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activatingId, setActivatingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -88,6 +104,7 @@ export default function DashboardPage() {
   async function activateCompany(id: string) {
     if (!session) return;
     setActivatingId(id);
+    setActionError(null);
     const res = await fetch(`/api/companies/${id}/status`, {
       method: "POST",
       headers: {
@@ -98,9 +115,12 @@ export default function DashboardPage() {
     });
     setActivatingId(null);
 
-    if (!res.ok) return;
-    const data = await res.json();
-    setCompanies((prev) => prev.map((c) => (c.id === id ? data.company : c)));
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setActionError(data.error ?? "Couldn't activate that company.");
+      return;
+    }
+    setCompanies((prev) => prev.map((c) => (c.id === id ? { ...c, ...data.company } : c)));
   }
 
   const pendingCount = companies.filter((c) => c.status === "pending").length;
@@ -142,6 +162,18 @@ export default function DashboardPage() {
             Manage Templates
           </Link>
           <Link
+            href="/dashboard/admins"
+            style={{
+              padding: "8px 16px",
+              border: "1px solid #000",
+              color: "#000",
+              textDecoration: "none",
+              borderRadius: 4,
+            }}
+          >
+            Admins
+          </Link>
+          <Link
             href="/dashboard/register"
             style={{
               padding: "8px 16px",
@@ -177,6 +209,8 @@ export default function DashboardPage() {
           )}
         </p>
       )}
+
+      {actionError && <p style={{ color: "crimson" }}>{actionError}</p>}
 
       {loadingCompanies ? (
         <p style={{ color: "#888" }}>Loading…</p>
@@ -217,18 +251,33 @@ export default function DashboardPage() {
                 <p style={{ margin: "8px 0 0", fontSize: 12, color: "#aaa" }}>
                   Registered {new Date(c.created_at).toLocaleDateString()}
                 </p>
-                <div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   <StatusBadge status={c.status} />
+                  {c.email_verified === false && (
+                    <span style={badgeStyle("#fdecea", "#b3261e")}>Email not verified</span>
+                  )}
+                  {c.signup_source === "self_signup" && (
+                    <span style={badgeStyle("#eef2ff", "#3730a3")}>Self sign-up</span>
+                  )}
                 </div>
               </Link>
 
               {c.status === "pending" && (
                 <button
                   onClick={() => activateCompany(c.id)}
-                  disabled={activatingId === c.id}
+                  disabled={activatingId === c.id || c.email_verified === false}
+                  title={
+                    c.email_verified === false
+                      ? "Waiting for the company to verify its email"
+                      : undefined
+                  }
                   style={{ marginTop: 12, padding: "6px 12px", width: "100%" }}
                 >
-                  {activatingId === c.id ? "Activating…" : "Activate"}
+                  {activatingId === c.id
+                    ? "Activating…"
+                    : c.email_verified === false
+                      ? "Awaiting email verification"
+                      : "Activate"}
                 </button>
               )}
             </div>

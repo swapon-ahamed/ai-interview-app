@@ -215,6 +215,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# Secrets: per-environment local env files (never committed).
+# web/.env.development and web/.env.production (and admin's) ARE committed —
+# they hold only non-secret defaults (URLs, env name, agent name).
+/.env.*
+!/.env.example
+*.env.local
+.env*.local
 web/.env.local
 agent/.env
 web/.next/
