@@ -12,6 +12,8 @@ type Company = {
   mobile_number: string;
   contact_address: string | null;
   status: "pending" | "active";
+  email_verified?: boolean;
+  signup_source?: "self_signup" | "admin_invite";
   created_at: string;
 };
 
@@ -115,7 +117,7 @@ export default function EditCompanyPage() {
     }
 
     const data = await res.json();
-    setCompany(data.company);
+    setCompany((prev) => (prev ? { ...prev, ...data.company } : data.company));
   }
 
   if (loading) return null;
@@ -151,6 +153,10 @@ export default function EditCompanyPage() {
           <span style={{ color: isActive ? "#1e7e34" : "#a15c00" }}>
             {isActive ? "Active" : "Pending approval"}
           </span>
+          <div style={{ fontSize: 13, marginTop: 4, color: company?.email_verified ? "#1e7e34" : "#b3261e" }}>
+            {company?.email_verified ? "Email verified" : "Email not verified yet"}
+            {company?.signup_source === "self_signup" ? " · self sign-up" : " · invited by admin"}
+          </div>
         </div>
         <button
           type="button"

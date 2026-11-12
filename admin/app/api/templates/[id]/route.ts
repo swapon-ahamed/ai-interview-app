@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAuthenticatedUser, getSupabaseAdmin } from "@/lib/supabase";
+import { getSupabaseAdmin } from "@/lib/supabase";
+import { requireAdmin } from "@/lib/auth";
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
-  const user = await getAuthenticatedUser(req.headers.get("authorization"));
-  if (!user) {
-    return NextResponse.json({ error: "Invalid or missing session" }, { status: 401 });
-  }
+  const auth = await requireAdmin(req.headers.get("authorization"));
+  if ("response" in auth) return auth.response;
+  const user = auth.user;
 
   const { data, error } = await getSupabaseAdmin()
     .from("question_templates")
@@ -26,10 +26,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 // reasoning as companies' email field — it's the stable identifier used in
 // the public /practice/[slug] URL.
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const user = await getAuthenticatedUser(req.headers.get("authorization"));
-  if (!user) {
-    return NextResponse.json({ error: "Invalid or missing session" }, { status: 401 });
-  }
+  const auth = await requireAdmin(req.headers.get("authorization"));
+  if ("response" in auth) return auth.response;
+  const user = auth.user;
 
   const body = await req.json();
   const skills = Array.isArray(body.skills)
@@ -64,10 +63,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
-  const user = await getAuthenticatedUser(req.headers.get("authorization"));
-  if (!user) {
-    return NextResponse.json({ error: "Invalid or missing session" }, { status: 401 });
-  }
+  const auth = await requireAdmin(req.headers.get("authorization"));
+  if ("response" in auth) return auth.response;
+  const user = auth.user;
 
   const { error } = await getSupabaseAdmin()
     .from("question_templates")

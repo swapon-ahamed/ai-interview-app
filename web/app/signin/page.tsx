@@ -1,16 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { AuthCard, Message, inputStyle, labelStyle, linkStyle, primaryButtonStyle } from "@/components/AuthCard";
 
-const page = {
-  bg: "#0b0b12",
-  surface: "#15151f",
-  border: "#26262f",
-  text: "#f5f5f7",
-  muted: "#9a9aa8",
-};
+const PENDING_MSG =
+  "Your company account is pending admin approval. You'll be able to sign in once it's activated.";
+const NOT_COMPANY_MSG =
+  "This account isn't a company account. Admins sign in through the admin app.";
 
 export default function SigninPage() {
   return (
@@ -27,117 +26,133 @@ function SigninForm() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(
-    searchParams.get("pending")
-      ? "Your company account is pending admin approval. You'll be notified once it's activated."
-      : null
+    searchParams.get("pending") ? PENDING_MSG : searchParams.get("notcompany") ? NOT_COMPANY_MSG : null
   );
+  const [unverified, setUnverified] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+  const [info, setInfo] = useState<string | null>(
+    searchParams.get("reset") ? "Password updated — sign in with your new password." : null
+  );
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const id = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(id);
+  }, [cooldown]);
 
   async function handleSignin(e: React.FormEvent) {
     e.preventDefault();
+    if (loading) return;
     setError(null);
+    setInfo(null);
+    setUnverified(false);
     setLoading(true);
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
 
     if (error) {
       setLoading(false);
-      setError(error.message);
+      if (/not confirmed/i.test(error.message)) {
+        setUnverified(true);
+        setError("Please verify your email address first — check your inbox for the verification link.");
+      } else if (/rate limit|too many/i.test(error.message)) {
+        setError("Too many sign-in attempts. Please wait a few minutes and try again.");
+      } else {
+        // Same message for unknown email and wrong password.
+        setError("Incorrect email or password.");
+      }
       return;
     }
 
     // Companies start 'pending' until an admin activates them (admin/dashboard).
-    // No matching row (e.g. an admin account) is let through unaffected.
+    // The API routes enforce this too (lib/companyAuth.ts); this check just
+    // gives a clear message instead of a dashboard full of errors.
     const { data: company } = await supabase
       .from("companies")
       .select("status")
       .eq("user_id", data.user.id)
       .maybeSingle();
 
-    setLoading(false);
-
-    if (company && company.status !== "active") {
+    if (!company || company.status !== "active") {
       await supabase.auth.signOut();
-      setError(
-        "Your company account is pending admin approval. You'll be notified once it's activated."
-      );
+      setLoading(false);
+      setError(company ? PENDING_MSG : NOT_COMPANY_MSG);
       return;
     }
 
     router.push("/dashboard");
   }
 
+  async function resendVerification() {
+    if (cooldown > 0 || !email.trim()) return;
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: email.trim(),
+      options: { emailRedirectTo: `${window.location.origin}/auth/confirmed` },
+    });
+    setCooldown(60);
+    setInfo(
+      error && /rate limit|seconds/i.test(error.message)
+        ? "Please wait a bit before requesting another email."
+        : "If that address is waiting for verification, we've sent a new link."
+    );
+  }
+
   return (
-    <main style={{ background: page.bg, color: page.text, minHeight: "100vh", fontFamily: "sans-serif" }}>
-      <div style={{ maxWidth: 400, margin: "0 auto", padding: "80px 24px" }}>
-        <h1 style={{ fontSize: 28 }}>Company Sign In</h1>
+    <AuthCard
+      title="Company Sign In"
+      footer={
+        <>
+          New here? <Link href="/signup" style={linkStyle}>Create a company account</Link>
+        </>
+      }
+    >
+      <form onSubmit={handleSignin}>
+        <label style={{ ...labelStyle, marginTop: 0 }} htmlFor="email">Email</label>
+        <input
+          id="email"
+          type="email"
+          required
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="you@company.com"
+          style={inputStyle}
+        />
 
-        <div style={{ background: page.surface, border: `1px solid ${page.border}`, borderRadius: 12, padding: 24, marginTop: 20 }}>
-          <form onSubmit={handleSignin}>
-            <label style={labelStyle}>Email</label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@company.com"
-              style={inputStyle}
-            />
+        <label style={labelStyle} htmlFor="password">Password</label>
+        <input
+          id="password"
+          type="password"
+          required
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          style={inputStyle}
+        />
 
-            <label style={{ ...labelStyle, marginTop: 16 }}>Password</label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={inputStyle}
-            />
-
-            {error && <p style={{ color: "#f87171", marginTop: 12, fontSize: 14 }}>{error}</p>}
-
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                width: "100%",
-                marginTop: 20,
-                padding: "10px 0",
-                background: "linear-gradient(135deg, #6366F1, #8B5CF6)",
-                color: "#fff",
-                border: "none",
-                borderRadius: 8,
-                fontWeight: 600,
-                fontSize: 15,
-                cursor: "pointer",
-              }}
-            >
-              {loading ? "Signing in…" : "Sign In"}
-            </button>
-          </form>
+        <div style={{ textAlign: "right", marginTop: 8, fontSize: 13 }}>
+          <Link href="/forgot-password" style={linkStyle}>Forgot password?</Link>
         </div>
 
-        <p style={{ marginTop: 24, fontSize: 14, color: page.muted }}>
-          Don&apos;t have an account? Company accounts are created by an administrator — contact
-          yours to get access.
-        </p>
-      </div>
-    </main>
+        {error && <Message kind="error">{error}</Message>}
+        {info && <Message kind="info">{info}</Message>}
+
+        {unverified && (
+          <button
+            type="button"
+            onClick={resendVerification}
+            disabled={cooldown > 0}
+            style={{ ...primaryButtonStyle(cooldown > 0), background: "transparent", border: "1px solid #8B5CF6", color: "#c4b5fd" }}
+          >
+            {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend verification email"}
+          </button>
+        )}
+
+        <button type="submit" disabled={loading} style={primaryButtonStyle(loading)}>
+          {loading ? "Signing in…" : "Sign In"}
+        </button>
+      </form>
+    </AuthCard>
   );
 }
-
-const labelStyle: React.CSSProperties = {
-  display: "block",
-  fontSize: 13,
-  color: "#c4c4d1",
-  marginBottom: 6,
-};
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "9px 12px",
-  borderRadius: 6,
-  border: "1px solid #26262f",
-  background: "#0f0f16",
-  color: "#f5f5f7",
-  fontSize: 14,
-  fontFamily: "inherit",
-};

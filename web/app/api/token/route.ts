@@ -1,14 +1,23 @@
 import { AccessToken } from "livekit-server-sdk";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { readJsonBody } from "@/lib/rateLimit";
 
 // Mints a short-lived LiveKit token so the candidate's browser can join the
 // interview room. The AI agent (agent/main.py) auto-joins the same room name
 // once it detects a participant has connected.
 export async function POST(req: NextRequest) {
-  const { candidateName, roomName } = await req.json();
+  const body = await readJsonBody(req, 2048);
+  const { candidateName, roomName } = (body ?? {}) as Record<string, unknown>;
 
-  if (!candidateName || !roomName) {
+  if (
+    typeof candidateName !== "string" ||
+    typeof roomName !== "string" ||
+    !candidateName.trim() ||
+    !roomName ||
+    candidateName.length > 120 ||
+    roomName.length > 128
+  ) {
     return NextResponse.json(
       { error: "candidateName and roomName are required" },
       { status: 400 }
@@ -25,6 +34,17 @@ export async function POST(req: NextRequest) {
 
   if (error || !interview) {
     return NextResponse.json({ error: "Interview not found." }, { status: 404 });
+  }
+
+  // A finished practice session can't be rejoined — otherwise one claimed
+  // attempt could be replayed for unlimited free AI sessions. (Company
+  // interviews keep their existing behaviour.) Reconnecting mid-session is
+  // still allowed since status is "in_progress" until the agent shuts down.
+  if (interview.mode === "practice" && interview.status === "completed") {
+    return NextResponse.json(
+      { error: "This practice session has already finished." },
+      { status: 410 }
+    );
   }
 
   const now = new Date();

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 type ScoreCard = {
   overall_score: number;
@@ -30,14 +31,24 @@ export default function ReportPage() {
   const [interview, setInterview] = useState<Interview | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const router = useRouter();
+
   useEffect(() => {
-    fetch(`/api/interviews/${roomName}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.error) setError(data.error);
-        else setInterview(data.interview);
-      });
-  }, [roomName]);
+    // Reports are private to the company that created the interview, so the
+    // API needs the company's session token.
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) {
+        router.replace("/signin");
+        return;
+      }
+      const res = await fetch(`/api/interviews/${encodeURIComponent(roomName)}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      }).catch(() => null);
+      const data = await res?.json().catch(() => ({}));
+      if (!res || !res.ok) setError(data?.error ?? "Couldn't load this report.");
+      else setInterview(data.interview);
+    });
+  }, [roomName, router]);
 
   if (error) return <p style={{ padding: 40, color: "red" }}>{error}</p>;
   if (!interview) return <p style={{ padding: 40 }}>Loading…</p>;

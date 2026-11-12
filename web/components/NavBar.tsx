@@ -89,9 +89,14 @@ export default function NavBar() {
             </button>
           </>
         ) : (
-          <Link href="/signin" style={linkStyle}>
-            Sign in
-          </Link>
+          <>
+            <Link href="/signin" style={linkStyle}>
+              Sign in
+            </Link>
+            <Link href="/signup" style={linkStyle}>
+              Sign up
+            </Link>
+          </>
         )}
 
         <Link

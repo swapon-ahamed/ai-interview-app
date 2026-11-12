@@ -1,9 +1,11 @@
 # Deploying `agent/` to AWS Lightsail
 
-How the AI interview agent is deployed as an always-on worker. The agent is a
+How the AI interview agent is deployed as the **production** always-on worker
+(`APP_ENV=production`, LiveKit worker name `ai-interviewer-prod`). Development
+runs locally instead — see `ENVIRONMENTS.md` at the repo root. The agent is a
 long-running process that stays connected to LiveKit Cloud waiting for rooms to
 join — it needs a persistent host, not a serverless/request-response platform
-(that's why `web/`/`admin/` go to Vercel but `agent/` goes here).
+(that's why `web/`/`admin/` are on AWS Amplify but `agent/` goes here).
 
 ## Current deployment
 
@@ -18,6 +20,7 @@ join — it needs a persistent host, not a serverless/request-response platform
 | Code path on instance | `~/ai-interview-app/agent/` |
 | Run mode | `systemd` service `ai-interview-agent` (auto-restart, survives reboot) |
 | Logs | `~/ai-interview-app/agent/agent.log` on the instance |
+| Environment | `APP_ENV=production` (set in the systemd unit) → loads `~/ai-interview-app/.env.production`, registers as `ai-interviewer-prod` |
 
 Swap: a 1GB swapfile at `/swapfile` was added because the agent (livekit-agents
 + Silero VAD + OpenAI plugin preloaded) sits at ~670MB RSS at idle on a 1GB
@@ -74,11 +77,11 @@ ssh -i ai-interview-agent-key.pem ubuntu@54.251.101.13 \
   "sudo apt-get update -y && sudo apt-get install -y python3-venv python3-pip git"
 ```
 
-### 4. Copy the agent code and the shared `.env`
+### 4. Copy the agent code and `.env.production`
 
-The agent (`agent/main.py`) loads `.env` from its **parent directory** — see
-`ENV_PATH` in `main.py` — so the layout on the instance mirrors the repo: the
-`.env` sits one level above `agent/`.
+The agent (`agent/main.py`) loads `.env.<APP_ENV>` from its **parent
+directory** — see `ENV_PATH` in `main.py` — so the layout on the instance
+mirrors the repo: `.env.production` sits one level above `agent/`.
 
 ```bash
 ssh -i ai-interview-agent-key.pem ubuntu@54.251.101.13 "mkdir -p ~/ai-interview-app/agent"
@@ -88,16 +91,16 @@ scp -i ai-interview-agent-key.pem \
   ubuntu@54.251.101.13:~/ai-interview-app/agent/
 
 scp -i ai-interview-agent-key.pem \
-  .env \
-  ubuntu@54.251.101.13:~/ai-interview-app/.env
+  .env.production \
+  ubuntu@54.251.101.13:~/ai-interview-app/.env.production
 
-ssh -i ai-interview-agent-key.pem ubuntu@54.251.101.13 "chmod 600 ~/ai-interview-app/.env"
+ssh -i ai-interview-agent-key.pem ubuntu@54.251.101.13 "chmod 600 ~/ai-interview-app/.env.production"
 ```
 
-**The `.env` holds live secrets (OpenAI key, Supabase service role key,
+**`.env.production` holds live secrets (OpenAI key, Supabase service role key,
 LiveKit API secret).** It's copied as-is, not committed anywhere, and kept at
 `600` permissions on the instance. When any of those values rotate, re-run
-just the `.env` scp line.
+just the `.env.production` scp line.
 
 ### 5. Create the venv and install dependencies
 
@@ -148,6 +151,8 @@ Wants=network-online.target
 Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu/ai-interview-app/agent
+# Loads ../.env.production and registers as the "ai-interviewer-prod" agent.
+Environment=APP_ENV=production
 ExecStart=/home/ubuntu/ai-interview-app/agent/venv/bin/python main.py start
 Restart=always
 RestartSec=5
@@ -170,10 +175,11 @@ ssh -i ai-interview-agent-key.pem ubuntu@54.251.101.13 "
 "
 ```
 
-`python main.py start` is the production run mode (vs. `dev`, which is for
-local iteration only — don't run `dev` on the server, and don't run `dev`
-locally at the same time as the server is up, since both would register as
-separate LiveKit workers and the room dispatch becomes a race between them).
+`python main.py start` is the production run mode (`dev` is for local
+iteration only — don't run `dev` on the server). Running `dev` locally while
+the server is up is safe: the local agent registers as `ai-interviewer-dev`
+and only receives rooms the *development* web app dispatches to that name, so
+the two never compete for interviews (see `ENVIRONMENTS.md`).
 
 ## Redeploying after a code change
 
@@ -198,7 +204,7 @@ ssh -i ai-interview-agent-key.pem ubuntu@54.251.101.13 "sudo systemctl status ai
 # Tail logs
 ssh -i ai-interview-agent-key.pem ubuntu@54.251.101.13 "tail -f ~/ai-interview-app/agent/agent.log"
 
-# Confirm it's registered with LiveKit (look for a "registered worker" line)
+# Confirm it's registered with LiveKit as "agent_name": "ai-interviewer-prod"
 ssh -i ai-interview-agent-key.pem ubuntu@54.251.101.13 "grep 'registered worker' ~/ai-interview-app/agent/agent.log | tail -1"
 
 # Memory check (watch for OOM pressure on the 1GB plan)
@@ -213,7 +219,7 @@ ssh -i ai-interview-agent-key.pem ubuntu@54.251.101.13 "free -h"
 
 ## Known limitation
 
-The `.env` on the instance is a point-in-time copy. There's no automated
-sync — if a secret rotates in the source `.env`, it must be re-copied and the
+The `.env.production` on the instance is a point-in-time copy. There's no automated
+sync — if a secret rotates in the source `.env.production`, it must be re-copied and the
 service restarted manually (step 4 + `sudo systemctl restart
 ai-interview-agent`).

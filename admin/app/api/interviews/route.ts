@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAuthenticatedUser, getSupabaseAdmin } from "@/lib/supabase";
+import { getSupabaseAdmin } from "@/lib/supabase";
+import { requireAdmin } from "@/lib/auth";
 
 // Lists every interview across every company, for the admin interviews page.
 // interviews and companies both reference auth.users independently (no direct
 // FK between them), so PostgREST can't embed one in the other — fetch both
 // and join company_name in by user_id here instead.
 export async function GET(req: NextRequest) {
-  const user = await getAuthenticatedUser(req.headers.get("authorization"));
-  if (!user) {
-    return NextResponse.json({ error: "Invalid or missing session" }, { status: 401 });
-  }
+  const auth = await requireAdmin(req.headers.get("authorization"));
+  if ("response" in auth) return auth.response;
+  const user = auth.user;
 
   const supabaseAdmin = getSupabaseAdmin();
 

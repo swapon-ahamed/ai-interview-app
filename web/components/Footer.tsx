@@ -43,13 +43,15 @@ export default function Footer() {
   if (pathname.startsWith("/interview") || pathname.startsWith("/room")) return null;
 
   return (
-    <footer style={{ background: "#0b0b12", color: "#f5f5f7", borderTop: `1px solid ${page.border}`, padding: "40px 32px", fontFamily: "sans-serif" }}>
+    <footer style={{ background: "#0b0b12", color: "#f5f5f7", borderTop: `1px solid ${page.border}`, padding: "40px 16px", fontFamily: "sans-serif" }}>
       <div
         style={{
           maxWidth: 1160,
           margin: "0 auto",
           display: "grid",
-          gridTemplateColumns: "1.4fr 1fr 1fr 1fr",
+          // Wraps to 2 columns, then 1, on narrow screens — the old fixed
+          // 4-column grid pushed the last column off-screen at phone width.
+          gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
           gap: 24,
         }}
       >

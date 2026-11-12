@@ -56,24 +56,51 @@ const SCORES = [
   { label: "English proficiency", value: 5 },
 ];
 
+// Same shape as the real scorer's output (agent/main.py SCORING_PROMPT).
+const OVERALL = { score: 5, recommendation: "Strong yes" };
+
 const STEP_MS = 4000;
 
 export default function LiveInterviewClient() {
   const [step, setStep] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [seconds, setSeconds] = useState(0);
+  // True once playback has actually reached and dwelt on the final answer —
+  // not merely when someone jumps to the last step with the scrubber.
+  const [finished, setFinished] = useState(false);
 
   const isLast = step === SCRIPT.length - 1;
 
   useEffect(() => {
     if (!playing) return;
-    if (isLast) {
-      setPlaying(false);
-      return;
-    }
-    const id = setTimeout(() => setStep((s) => Math.min(s + 1, SCRIPT.length - 1)), STEP_MS);
+    // Let the final answer stay on screen for a full step before ending,
+    // instead of stopping (and announcing "complete") the instant it appears.
+    const id = setTimeout(() => {
+      if (isLast) {
+        setPlaying(false);
+        setFinished(true);
+      } else {
+        setStep((s) => Math.min(s + 1, SCRIPT.length - 1));
+      }
+    }, STEP_MS);
     return () => clearTimeout(id);
   }, [playing, step, isLast]);
+
+  function goTo(i: number) {
+    setStep(Math.max(0, Math.min(SCRIPT.length - 1, i)));
+    setFinished(false);
+  }
+
+  function togglePlay() {
+    if (finished || (isLast && !playing)) {
+      setStep(0);
+      setSeconds(0);
+      setFinished(false);
+      setPlaying(true);
+    } else {
+      setPlaying((p) => !p);
+    }
+  }
 
   useEffect(() => {
     if (!playing) return;
@@ -87,7 +114,7 @@ export default function LiveInterviewClient() {
 
   return (
     <main style={{ background: page.bg, color: page.text, minHeight: "100vh", fontFamily: "sans-serif" }}>
-      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "56px 32px 64px", textAlign: "center" }}>
+      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "56px 16px 64px", textAlign: "center" }}>
         <span
           style={{
             display: "inline-block",
@@ -99,18 +126,21 @@ export default function LiveInterviewClient() {
             borderRadius: 999,
           }}
         >
-          Recorded walkthrough
+          Sample walkthrough
         </span>
-        <h1 style={{ fontSize: 36, marginTop: 20 }}>See a live interview end to end</h1>
+        <h1 style={{ fontSize: "clamp(26px, 6vw, 36px)", marginTop: 20 }}>See a live interview end to end</h1>
         <p style={{ color: page.muted, marginTop: 12, maxWidth: 560, marginLeft: "auto", marginRight: "auto", lineHeight: 1.6 }}>
-          A sample session, replayed: the AI interviewer&apos;s questions, the candidate&apos;s
-          answers, and the scorecard that lands in the recruiter&apos;s dashboard minutes later.
+          An illustrative sample session with a fictional candidate: the AI interviewer&apos;s
+          questions, the candidate&apos;s answers, and the scorecard that lands in the
+          recruiter&apos;s dashboard minutes later.
         </p>
 
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1.4fr 1fr",
+            // Two columns on desktop, stacked on phones (was a fixed
+            // "1.4fr 1fr" that crushed both panels and overflowed at 390px).
+            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))",
             gap: 16,
             marginTop: 36,
             textAlign: "left",
@@ -131,9 +161,12 @@ export default function LiveInterviewClient() {
               }}
             >
               <span>
-                <span style={{ color: "#f87171" }}>●</span> Recorded · {ROLE_LABEL}
+                <span aria-hidden="true" style={{ color: playing ? "#f87171" : "#6b6b78" }}>●</span> Sample · {ROLE_LABEL}
               </span>
-              <span style={{ border: `1px solid ${page.border}`, borderRadius: 4, padding: "2px 8px", fontVariantNumeric: "tabular-nums" }}>
+              <span
+                aria-label={`Elapsed ${mm} minutes ${ss} seconds`}
+                style={{ border: `1px solid ${page.border}`, borderRadius: 4, padding: "2px 8px", fontVariantNumeric: "tabular-nums" }}
+              >
                 {mm}:{ss}
               </span>
             </div>
@@ -153,6 +186,7 @@ export default function LiveInterviewClient() {
                     fontSize: 20,
                     boxShadow: current.speaker === "ai" ? "0 0 0 3px rgba(139,92,246,0.35)" : "none",
                   }}
+                  aria-hidden="true"
                 >
                   🎙
                 </div>
@@ -173,6 +207,7 @@ export default function LiveInterviewClient() {
                     color: "#6b6b78",
                     boxShadow: current.speaker === "candidate" ? "0 0 0 3px rgba(139,92,246,0.35)" : "none",
                   }}
+                  aria-hidden="true"
                 >
                   👤
                 </div>
@@ -181,22 +216,28 @@ export default function LiveInterviewClient() {
             </div>
 
             <div style={{ padding: 16, borderTop: `1px solid ${page.border}` }}>
-              <div style={{ fontSize: 11, color: "#a78bfa", letterSpacing: 1, marginBottom: 6, textTransform: "uppercase" }}>
-                {current.speaker === "ai" ? "AI Interviewer" : "Candidate response"}
+              {/* Announced to screen readers as the script advances. */}
+              <div aria-live="polite" aria-atomic="true">
+                <div style={{ fontSize: 11, color: "#a78bfa", letterSpacing: 1, marginBottom: 6, textTransform: "uppercase" }}>
+                  {current.speaker === "ai" ? "AI Interviewer" : "Candidate response"}
+                </div>
+                {/* Tall enough for the longest line on a phone, so the
+                    controls below don't jump around as text changes. */}
+                <p style={{ fontSize: 14, color: page.text, minHeight: 84, lineHeight: 1.5, margin: 0 }}>{current.text}</p>
+                {finished && (
+                  <p style={{ fontSize: 14, color: "#a78bfa", marginTop: 8 }}>
+                    Interview complete. Scorecard generated — see the scorecard preview.
+                  </p>
+                )}
               </div>
-              <p style={{ fontSize: 14, color: page.text, minHeight: 40, lineHeight: 1.5 }}>{current.text}</p>
-              {isLast && !playing && seconds > 0 && (
-                <p style={{ fontSize: 14, color: "#a78bfa", marginTop: 8 }}>
-                  Interview complete. Scorecard generated below.
-                </p>
-              )}
 
               <div style={{ display: "flex", gap: 4, marginTop: 12 }}>
                 {SCRIPT.map((_, i) => (
                   <button
                     key={i}
-                    onClick={() => setStep(i)}
-                    aria-label={`Jump to step ${i + 1}`}
+                    onClick={() => goTo(i)}
+                    aria-label={`Jump to step ${i + 1} of ${SCRIPT.length}`}
+                    aria-current={i === step ? "step" : undefined}
                     style={{
                       flex: 1,
                       height: 4,
@@ -212,22 +253,15 @@ export default function LiveInterviewClient() {
 
               <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, marginTop: 14 }}>
                 <button
-                  onClick={() => setStep((s) => Math.max(0, s - 1))}
-                  style={iconButtonStyle}
+                  onClick={() => goTo(step - 1)}
+                  disabled={step === 0}
+                  style={{ ...iconButtonStyle, opacity: step === 0 ? 0.4 : 1 }}
                   aria-label="Previous"
                 >
-                  ⏮
+                  <span aria-hidden="true">⏮</span>
                 </button>
                 <button
-                  onClick={() => {
-                    if (isLast) {
-                      setStep(0);
-                      setSeconds(0);
-                      setPlaying(true);
-                    } else {
-                      setPlaying((p) => !p);
-                    }
-                  }}
+                  onClick={togglePlay}
                   style={{
                     padding: "8px 20px",
                     borderRadius: 6,
@@ -238,14 +272,21 @@ export default function LiveInterviewClient() {
                     fontWeight: 600,
                   }}
                 >
-                  {isLast ? "↺ Replay" : playing ? "❚❚ Pause" : "▷ Play"}
+                  {playing ? (
+                    <><span aria-hidden="true">❚❚</span> Pause</>
+                  ) : finished || isLast ? (
+                    <><span aria-hidden="true">↺</span> Replay</>
+                  ) : (
+                    <><span aria-hidden="true">▷</span> {step === 0 && seconds === 0 ? "Play" : "Resume"}</>
+                  )}
                 </button>
                 <button
-                  onClick={() => setStep((s) => Math.min(SCRIPT.length - 1, s + 1))}
-                  style={iconButtonStyle}
+                  onClick={() => goTo(step + 1)}
+                  disabled={isLast}
+                  style={{ ...iconButtonStyle, opacity: isLast ? 0.4 : 1 }}
                   aria-label="Next"
                 >
-                  ⏭
+                  <span aria-hidden="true">⏭</span>
                 </button>
               </div>
             </div>
@@ -256,7 +297,24 @@ export default function LiveInterviewClient() {
             <div style={{ fontSize: 11, color: "#a78bfa", letterSpacing: 1, fontWeight: 700, textTransform: "uppercase" }}>
               Scorecard preview
             </div>
-            <h2 style={{ fontSize: 19, marginTop: 8, marginBottom: 16 }}>What the recruiter sees</h2>
+            <h2 style={{ fontSize: 19, marginTop: 8, marginBottom: 12 }}>What the recruiter sees</h2>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "baseline",
+                gap: 10,
+                padding: "10px 12px",
+                marginBottom: 16,
+                background: "rgba(139,92,246,0.15)",
+                borderRadius: 8,
+              }}
+            >
+              <span style={{ fontSize: 22, fontWeight: 800, color: "#c4b5fd" }}>{OVERALL.score}/5</span>
+              <span style={{ color: "#c4b5fd", fontWeight: 600, fontSize: 14 }}>
+                Overall · {OVERALL.recommendation}
+              </span>
+            </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {SCORES.map((s) => (
