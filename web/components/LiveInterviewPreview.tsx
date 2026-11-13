@@ -93,7 +93,7 @@ export function LiveInterviewPreview() {
           >
             🎙
           </div>
-          <div style={{ fontSize: 13, color: "#c4c4d1" }}>Ayesha — AI Interviewer</div>
+          <div style={{ fontSize: 13, color: "#c4c4d1" }}>AI Interviewer</div>
           <div style={{ marginTop: 6, color: "#8B5CF6", letterSpacing: 2, fontSize: 12 }}>
             ▁▃▅▂▄▆▂
           </div>

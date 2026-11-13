@@ -65,9 +65,6 @@ export default function NavBar() {
         <Link href="/live-interview" style={linkStyle}>
           Live demo
         </Link>
-        <Link href="/#pricing" style={linkStyle}>
-          Pricing
-        </Link>
 
         {session ? (
           <>

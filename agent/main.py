@@ -61,7 +61,6 @@ if not os.environ.get("LIVEKIT_URL"):
 # environment-specific name and only joins rooms that explicitly dispatch
 # that name (web/lib/livekit.ts; same LIVEKIT_AGENT_NAME variable). Without a name it would
 # use automatic dispatch and race the other environment's agent for rooms.
-# (Not to be confused with AGENT_NAME below, the interviewer persona's name.)
 WORKER_NAME = os.environ.get("LIVEKIT_AGENT_NAME") or (
     "ai-interviewer-prod" if APP_ENV == "production" else "ai-interviewer-dev"
 )
@@ -76,8 +75,6 @@ DEFAULT_QUESTIONS = [
 ]
 
 
-AGENT_NAME = "Ayesha"
-
 # Topic for the live-progress data messages published to the room as the
 # interview moves through its question plan — read by the candidate's browser
 # (web/app/interview/[roomName]/page.tsx) to drive the progress bar.
@@ -85,8 +82,9 @@ PROGRESS_TOPIC = "interview-progress"
 
 
 def build_system_prompt(job_role: str, questions: list[str], duration_minutes: int) -> str:
-    return f"""You are Ayesha, an AI interviewer conducting a live voice interview for a
-{job_role} position. Introduce yourself by name once at the very start ("Hi, I'm Ayesha"),
+    return f"""You are the AI Interviewer, conducting a live voice interview for a
+{job_role} position. You have no personal name. Introduce yourself once at the very start
+("Hi, I'm your AI Interviewer"),
 then be warm, professional, and concise — this is a spoken conversation, not a written one,
 so keep your turns short (2-3 sentences max unless asking a full question).
 
@@ -212,7 +210,7 @@ async def entrypoint(ctx: JobContext):
         vad=silero.VAD.load(),
         stt=openai.STT(model="gpt-4o-mini-transcribe"),
         llm=openai.LLM(model="gpt-4o-mini"),
-        tts=openai.TTS(model="gpt-4o-mini-tts", voice="nova"),
+        tts=openai.TTS(model="gpt-4o-mini-tts", voice="onyx"),
     )
 
     transcript: list[dict] = []
