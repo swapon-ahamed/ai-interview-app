@@ -18,6 +18,28 @@ const page = {
   accent: "#8B5CF6",
 };
 
+function SoonBadge() {
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        marginLeft: 6,
+        fontSize: 10,
+        fontWeight: 700,
+        letterSpacing: 0.5,
+        textTransform: "uppercase",
+        color: "#fff",
+        background: page.accent,
+        padding: "2px 8px",
+        borderRadius: 999,
+        verticalAlign: "middle",
+      }}
+    >
+      Coming soon
+    </span>
+  );
+}
+
 function Pill({ children }: { children: React.ReactNode }) {
   return (
     <span
@@ -101,13 +123,15 @@ const FEATURES = [
   {
     icon: "🌐",
     title: "Multilingual interviews",
-    body: "Runs in 40+ languages against the same rubric, so results stay comparable worldwide.",
+    body: "Runs in English today, with Bangla on the way — same rubric, so results stay comparable worldwide.",
+    badge: true,
   },
-  {
-    icon: "🔌",
-    title: "ATS integrations",
-    body: "Pushes scorecards straight into the tools your recruiting team already lives in.",
-  },
+  // Hidden for now — re-enable when ATS integrations ship.
+  // {
+  //   icon: "🔌",
+  //   title: "ATS integrations",
+  //   body: "Pushes scorecards straight into the tools your recruiting team already lives in.",
+  // },
 ];
 
 const TRACKS = [
@@ -121,36 +145,6 @@ const STEPS = [
   { n: 2, title: "AI conducts the interview", body: "Follow-up questions adapt to each answer in real time, just like a strong human interviewer." },
   { n: 3, title: "Get scored results", body: "A structured scorecard lands in your dashboard within minutes of the call ending." },
   { n: 4, title: "Decide with confidence", body: "Compare candidates side by side on the same rubric and move your best forward." },
-];
-
-const PLANS = [
-  {
-    tier: "STARTER",
-    price: "$0",
-    blurb: "Try it on a single open role.",
-    features: ["Up to 10 interviews/mo", "1 interview rubric", "Video + transcript review", "Email support"],
-    cta: "Start free",
-    href: "/signin",
-    highlight: false,
-  },
-  {
-    tier: "GROWTH",
-    price: "$399",
-    blurb: "For teams hiring across several roles.",
-    features: ["Unlimited interviews", "Custom rubrics per role", "Fraud & proctoring signals", "ATS integrations", "Priority support"],
-    cta: "Book a demo",
-    href: "/book-demo",
-    highlight: true,
-  },
-  {
-    tier: "ENTERPRISE",
-    price: "Custom",
-    blurb: "Volume hiring with dedicated support.",
-    features: ["Everything in Growth", "SSO & audit logs", "Dedicated success manager", "Custom SLAs & onboarding"],
-    cta: "Talk to sales",
-    href: "/book-demo",
-    highlight: false,
-  },
 ];
 
 export default function WelcomePage() {
@@ -176,8 +170,12 @@ export default function WelcomePage() {
 
             <div style={{ display: "flex", gap: 40, marginTop: 44 }}>
               <div>
-                <div style={{ fontSize: 26, fontWeight: 800 }}>40+</div>
+                <div style={{ fontSize: 26, fontWeight: 800 }}>2</div>
                 <div style={{ fontSize: 13, color: page.muted }}>languages supported</div>
+                <div style={{ fontSize: 13, color: page.muted, marginTop: 4 }}>
+                  English · Bangla
+                  <SoonBadge />
+                </div>
               </div>
               <div>
                 <div style={{ fontSize: 26, fontWeight: 800 }}>6 min</div>
@@ -194,25 +192,8 @@ export default function WelcomePage() {
         </div>
       </section>
 
-      {/* Customers */}
-      <section id="customers" style={{ borderTop: `1px solid ${page.border}`, padding: "32px 32px" }}>
-        <div style={{ maxWidth: 1160, margin: "0 auto", textAlign: "center" }}>
-          <div style={{ fontSize: 12, letterSpacing: 1.5, color: page.muted, marginBottom: 20 }}>
-            TRUSTED BY TALENT TEAMS AT
-          </div>
-          <div style={{ display: "flex", justifyContent: "center", gap: 40, flexWrap: "wrap", color: "#5c5c68", fontWeight: 600 }}>
-            <span>Northwind</span>
-            <span>Fenwick</span>
-            <span>Loop Robotics</span>
-            <span>Cobalt</span>
-            <span>Marrow Health</span>
-            <span>Delta Systems</span>
-          </div>
-        </div>
-      </section>
-
       {/* Platform */}
-      <section id="product" style={{ padding: "72px 32px" }}>
+      <section id="product" style={{ padding: "72px 32px", borderTop: `1px solid ${page.border}` }}>
         <div style={{ maxWidth: 1160, margin: "0 auto" }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: page.accent, letterSpacing: 1 }}>PLATFORM</div>
           <h2 style={{ fontSize: 32, marginTop: 8, maxWidth: 640 }}>
@@ -223,7 +204,10 @@ export default function WelcomePage() {
             {FEATURES.map((f) => (
               <div key={f.title} style={{ background: page.surface, border: `1px solid ${page.border}`, borderRadius: 10, padding: 20 }}>
                 <div style={{ fontSize: 20, marginBottom: 12 }}>{f.icon}</div>
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>{f.title}</div>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                  {f.title}
+                  {"badge" in f && f.badge && <SoonBadge />}
+                </div>
                 <div style={{ fontSize: 14, color: page.muted, lineHeight: 1.5 }}>{f.body}</div>
               </div>
             ))}
@@ -326,7 +310,7 @@ export default function WelcomePage() {
           }}
         >
           <div>
-            <h2 style={{ fontSize: 26, margin: 0 }}>See Ayesha run a real interview</h2>
+            <h2 style={{ fontSize: 26, margin: 0 }}>See the AI Interviewer run a real interview</h2>
             <p style={{ color: "#d8d4f7", marginTop: 8, maxWidth: 480 }}>
               Fifteen minutes, your rubric or ours. Walk away with a scorecard for a real
               candidate profile.
@@ -361,71 +345,6 @@ export default function WelcomePage() {
               Try the candidate demo
             </Link>
           </div>
-        </div>
-      </section>
-
-      {/* Pricing */}
-      <section id="pricing" style={{ padding: "72px 32px", textAlign: "center" }}>
-        <div style={{ maxWidth: 1160, margin: "0 auto" }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: page.accent, letterSpacing: 1 }}>PRICING</div>
-          <h2 style={{ fontSize: 32, marginTop: 8 }}>Priced for one req or a thousand</h2>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 20, marginTop: 40, textAlign: "left" }}>
-            {PLANS.map((p) => (
-              <div
-                key={p.tier}
-                style={{
-                  background: page.surface,
-                  border: `1px solid ${p.highlight ? page.accent : page.border}`,
-                  borderRadius: 12,
-                  padding: 24,
-                  position: "relative",
-                }}
-              >
-                {p.highlight && (
-                  <span
-                    style={{
-                      position: "absolute",
-                      top: -12,
-                      right: 20,
-                      background: page.accent,
-                      color: "#fff",
-                      fontSize: 11,
-                      fontWeight: 700,
-                      padding: "3px 10px",
-                      borderRadius: 999,
-                    }}
-                  >
-                    Most popular
-                  </span>
-                )}
-                <div style={{ fontSize: 12, fontWeight: 700, color: page.muted, letterSpacing: 1 }}>{p.tier}</div>
-                <div style={{ fontSize: 32, fontWeight: 800, marginTop: 10 }}>
-                  {p.price}
-                  {p.price !== "Custom" && <span style={{ fontSize: 14, color: page.muted, fontWeight: 400 }}> / month</span>}
-                </div>
-                <div style={{ fontSize: 14, color: page.muted, marginTop: 8 }}>{p.blurb}</div>
-                <ul style={{ listStyle: "none", padding: 0, marginTop: 20, display: "flex", flexDirection: "column", gap: 10 }}>
-                  {p.features.map((f) => (
-                    <li key={f} style={{ fontSize: 14, display: "flex", gap: 8 }}>
-                      <span style={{ color: page.accent }}>✓</span> {f}
-                    </li>
-                  ))}
-                </ul>
-                <div style={{ marginTop: 24 }}>
-                  {p.highlight ? (
-                    <PrimaryButton href={p.href}>{p.cta}</PrimaryButton>
-                  ) : (
-                    <SecondaryButton href={p.href}>{p.cta}</SecondaryButton>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-          <p style={{ fontSize: 13, color: page.muted, marginTop: 28 }}>
-            Plans above are indicative — every account is currently set up by hand, so book a
-            demo and we'll confirm pricing for your volume.
-          </p>
         </div>
       </section>
 
