@@ -17,7 +17,6 @@ const FEATURES = [
   { icon: "🎥", title: "A live mock interview", body: "Watch the AI interviewer run a real session on your own rubric." },
   { icon: "📊", title: "A real scorecard", body: "See exactly what your recruiters and hiring managers would receive." },
   { icon: "⚙️", title: "Your stack, mapped", body: "We'll cover how AI Interview fits your ATS and interview workflow." },
-  { icon: "💲", title: "Pricing for your volume", body: "Leave with a plan and number that fits your hiring pace." },
 ];
 
 export default function BookDemoClient() {
